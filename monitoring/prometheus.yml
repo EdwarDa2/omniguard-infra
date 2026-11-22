@@ -1,0 +1,132 @@
+# ============================================================
+# OmniGuard SOC - Prometheus Configuration
+# Scrape targets: Core API, PostgreSQL, Redis, Nginx, Node Exporter
+# ============================================================
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: 'omniguard-soc'
+    environment: '${ENV:-production}'
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ['alertmanager:9093']
+
+rule_files:
+  - '/etc/prometheus/rules/*.yml'
+
+scrape_configs:
+  # ------------------------------------------------------------------
+  # Prometheus self-monitoring
+  # ------------------------------------------------------------------
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # ------------------------------------------------------------------
+  # Core API (Spring Boot Actuator + Micrometer)
+  # ------------------------------------------------------------------
+  - job_name: 'core-api'
+    metrics_path: '/actuator/prometheus'
+    scrape_interval: 10s
+    static_configs:
+      - targets: ['core-api:8081']
+        labels:
+          service: 'core-api'
+          component: 'application'
+
+  # ------------------------------------------------------------------
+  # PostgreSQL (via postgres_exporter)
+  # ------------------------------------------------------------------
+  - job_name: 'postgres'
+    static_configs:
+      - targets: ['postgres-exporter:9187']
+        labels:
+          service: 'postgres'
+          component: 'database'
+    # Si no hay postgres_exporter sidecar, descomenta y usa consulta directa:
+    # - targets: ['postgres:5432']
+    #   labels:
+    #     service: 'postgres'
+
+  # ------------------------------------------------------------------
+  # Redis (via redis_exporter)
+  # ------------------------------------------------------------------
+  - job_name: 'redis'
+    static_configs:
+      - targets: ['redis-exporter:9121']
+        labels:
+          service: 'redis'
+          component: 'cache'
+
+  # ------------------------------------------------------------------
+  # Nginx (via nginx-prometheus-exporter)
+  # ------------------------------------------------------------------
+  - job_name: 'nginx'
+    static_configs:
+      - targets: ['nginx-exporter:9113']
+        labels:
+          service: 'nginx'
+          component: 'proxy'
+
+  # ------------------------------------------------------------------
+  # Node Exporter (host metrics)
+  # ------------------------------------------------------------------
+  - job_name: 'node'
+    static_configs:
+      - targets: ['node-exporter:9100']
+        labels:
+          service: 'node'
+          component: 'infrastructure'
+
+  # ------------------------------------------------------------------
+  # Cadvisor (container metrics)
+  # ------------------------------------------------------------------
+  - job_name: 'cadvisor'
+    static_configs:
+      - targets: ['cadvisor:8080']
+        labels:
+          service: 'cadvisor'
+          component: 'containers'
+
+  # ------------------------------------------------------------------
+  # Blackbox Exporter (endpoint probing)
+  # ------------------------------------------------------------------
+  - job_name: 'blackbox-https'
+    metrics_path: /probe
+    params:
+      module: [http_2xx]
+    static_configs:
+      - targets:
+          - https://${DOMAIN:-omniguard.local}/health
+          - https://${DOMAIN:-omniguard.local}/api/v1/auth/me
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox-exporter:9115
+
+  # ------------------------------------------------------------------
+  # Alertmanager
+  # ------------------------------------------------------------------
+  - job_name: 'alertmanager'
+    static_configs:
+      - targets: ['alertmanager:9093']
+        labels:
+          service: 'alertmanager'
+          component: 'monitoring'
+
+  # ------------------------------------------------------------------
+  # Grafana
+  # ------------------------------------------------------------------
+  - job_name: 'grafana'
+    static_configs:
+      - targets: ['grafana:3000']
+        labels:
+          service: 'grafana'
+          component: 'monitoring'
