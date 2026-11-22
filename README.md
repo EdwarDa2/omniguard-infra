@@ -35,3 +35,31 @@ Detener y eliminar volúmenes locales:
 ```bash
 docker compose down -v
 ```
+
+## PostgreSQL
+
+El contenedor crea los esquemas `iam`, `assets` y `alerts` al inicializar por
+primera vez el volumen `postgres-data`.
+
+Variables requeridas en `.env`:
+
+- `POSTGRES_DB`
+- `POSTGRES_USER`
+- `POSTGRES_PASSWORD`
+- `POSTGRES_PORT`
+
+No publiques el puerto PostgreSQL fuera del servidor de despliegue.
+
+## Sincronización NVD
+
+El servicio `cve-sync` consulta la API NVD 2.0 únicamente para los CPE registrados
+en `assets.services.cpe_name`.
+
+Variables requeridas o opcionales:
+
+- `NVD_API_KEY`: opcional, aumenta el límite de consultas.
+- `NVD_BASE_URL`: endpoint NVD 2.0.
+- `CVE_SYNC_INTERVAL_SECONDS`: intervalo de sincronización.
+
+El cruce exacto requiere que el activo registre `cpe_name` y, opcionalmente,
+`product_version`. El proyecto no usa otra fuente CVE.
