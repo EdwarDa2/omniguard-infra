@@ -1,0 +1,307 @@
+version: "3.9"
+
+services:
+  # ============================================================
+  # BASE DE DATOS - PostgreSQL 16
+  # ============================================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: omniguard-postgres
+    environment:
+      POSTGRES_DB: omniguard
+      POSTGRES_USER: ${DB_USER:-omniguard}
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_password
+    secrets:
+      - db_password
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-omniguard} -d omniguard"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - internal
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 512M
+      restart_policy:
+        condition: on-failure
+        max_attempts: 3
+
+  # ============================================================
+  # CACHE / PUB-SUB / SESIONES - Redis 7
+  # ============================================================
+  redis:
+    image: redis:7-alpine
+    container_name: omniguard-redis
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    networks:
+      - internal
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+      restart_policy:
+        condition: on-failure
+        max_attempts: 3
+
+  # ============================================================
+  # CORE API - Spring Boot (se construye desde core/omniguard-core-java)
+  # ============================================================
+  core-api:
+    image: ${REGISTRY:-ghcr.io}/${PROJECT_NAME:-omniguard}/core-api:${VERSION:-latest}
+    container_name: omniguard-core-api
+    build:
+      context: ../../core/omniguard-core-java
+      dockerfile: Dockerfile
+      args:
+        JAVA_VERSION: 21
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/omniguard
+      SPRING_DATASOURCE_USERNAME: ${DB_USER:-omniguard}
+      SPRING_DATASOURCE_PASSWORD_FILE: /run/secrets/db_password
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
+      PASETO_PRIVATE_KEY_FILE: /run/secrets/paseto_private_key
+      PASETO_PUBLIC_KEY_FILE: /run/secrets/paseto_public_key
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      SERVER_PORT: 8080
+      MANAGEMENT_SERVER_PORT: 8081
+    secrets:
+      - db_password
+      - paseto_private_key
+      - paseto_public_key
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - internal
+      - web
+    deploy:
+      replicas: 2
+      resources:
+        limits:
+          memory: 1G
+          cpus: "0.5"
+        reservations:
+          memory: 512M
+          cpus: "0.25"
+      restart_policy:
+        condition: on-failure
+        max_attempts: 3
+      update_config:
+        parallelism: 1
+        delay: 10s
+        order: start-first
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8081/actuator/health/liveness || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # ============================================================
+  # REVERSE PROXY - Nginx (TLS termination, rate limit, security headers)
+  # ============================================================
+  nginx:
+    image: nginx:alpine
+    container_name: omniguard-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./certs:/etc/nginx/certs:ro
+    depends_on:
+      - core-api
+    networks:
+      - web
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "0.25"
+      restart_policy:
+        condition: on-failure
+        max_attempts: 3
+
+  # ============================================================
+  # OBSERVABILIDAD - Prometheus
+  # ============================================================
+  prometheus:
+    image: prom/prometheus:v2.48
+    container_name: omniguard-prometheus
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - promdata:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=30d"
+      - "--web.enable-lifecycle"
+      - "--web.enable-admin-api"
+    networks:
+      - monitoring
+    ports:
+      - "9090:9090"
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: "0.5"
+      restart_policy:
+        condition: on-failure
+
+  # ============================================================
+  # OBSERVABILIDAD - Grafana
+  # ============================================================
+  grafana:
+    image: grafana/grafana:10.2
+    container_name: omniguard-grafana
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD_FILE: /run/secrets/grafana_password
+      GF_INSTALL_PLUGINS: grafana-piechart-panel
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+    secrets:
+      - grafana_password
+    volumes:
+      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+      - grafanadata:/var/lib/grafana
+    depends_on:
+      - prometheus
+    networks:
+      - monitoring
+      - web
+    ports:
+      - "3000:3000"
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+      restart_policy:
+        condition: on-failure
+
+  # ============================================================
+  # OBSERVABILIDAD - Alertmanager
+  # ============================================================
+  alertmanager:
+    image: prom/alertmanager:v0.26
+    container_name: omniguard-alertmanager
+    volumes:
+      - ./monitoring/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertdata:/alertmanager
+    command:
+      - "--config.file=/etc/alertmanager/alertmanager.yml"
+      - "--storage.path=/alertmanager"
+    networks:
+      - monitoring
+    ports:
+      - "9093:9093"
+    deploy:
+      restart_policy:
+        condition: on-failure
+
+  # ============================================================
+  # LOGS - Loki + Promtail (opcional pero recomendado)
+  # ============================================================
+  loki:
+    image: grafana/loki:2.9
+    container_name: omniguard-loki
+    volumes:
+      - ./monitoring/loki.yml:/etc/loki/local-config.yaml:ro
+      - lokidata:/loki
+    command: -config.file=/etc/loki/local-config.yaml
+    networks:
+      - monitoring
+    ports:
+      - "3100:3100"
+    deploy:
+      restart_policy:
+        condition: on-failure
+
+  promtail:
+    image: grafana/promtail:2.9
+    container_name: omniguard-promtail
+    volumes:
+      - /var/log:/var/log:ro
+      - ./monitoring/promtail.yml:/etc/promtail/config.yml:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+    depends_on:
+      - loki
+    networks:
+      - monitoring
+    deploy:
+      restart_policy:
+        condition: on-failure
+
+# ============================================================
+# REDES
+# ============================================================
+networks:
+  internal:
+    driver: bridge
+    internal: true
+    name: omniguard-internal
+  web:
+    driver: bridge
+    name: omniguard-web
+  monitoring:
+    driver: bridge
+    name: omniguard-monitoring
+
+# ============================================================
+# VOLÚMENES
+# ============================================================
+volumes:
+  pgdata:
+    name: omniguard-pgdata
+  redisdata:
+    name: omniguard-redisdata
+  promdata:
+    name: omniguard-promdata
+  grafanadata:
+    name: omniguard-grafanadata
+  alertdata:
+    name: omniguard-alertdata
+  lokidata:
+    name: omniguard-lokidata
+
+# ============================================================
+# SECRETS (archivos en ./secrets/ o Docker Secrets en Swarm/K8s)
+# ============================================================
+secrets:
+  db_password:
+    file: ./secrets/db_password.txt
+  paseto_private_key:
+    file: ./secrets/paseto_private_key.txt
+  paseto_public_key:
+    file: ./secrets/paseto_public_key.txt
+  grafana_password:
+    file: ./secrets/grafana_password.txt
