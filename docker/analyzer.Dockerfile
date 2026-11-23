@@ -9,6 +9,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY omniguard-analyzer-python/analyzer.py \
      omniguard-analyzer-python/detector.py \
      omniguard-analyzer-python/notifier.py \
+     omniguard-analyzer-python/persistence.py \
      ./
 
 ENTRYPOINT ["python", "analyzer.py"]

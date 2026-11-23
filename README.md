@@ -63,3 +63,14 @@ Variables requeridas o opcionales:
 
 El cruce exacto requiere que el activo registre `cpe_name` y, opcionalmente,
 `product_version`. El proyecto no usa otra fuente CVE.
+
+## Persistencia del analizador
+
+El analizador guarda en PostgreSQL:
+
+- Activos origen y destino detectados en `assets.network_assets`.
+- Servicios destino en `assets.services`.
+- Alertas MEDIUM y HIGH en `alerts.events`.
+
+PostgreSQL debe ser saludable antes de iniciar el analizador. Si la base está
+temporalmente fuera, el analizador registrará el error y seguirá escuchando Redis.
