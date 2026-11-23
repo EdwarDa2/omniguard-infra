@@ -4,10 +4,11 @@ Infraestructura local de OmniGuard SOC con Docker Compose.
 
 ## Servicios
 
-- Redis: bus `network_events`
-- PostgreSQL: almacenamiento futuro de IAM, activos y alertas
-- Analizador Python: consume eventos y detecta amenazas
-- Sensor C++: captura tráfico de red y publica eventos
+- Redis: bus `network_events`.
+- PostgreSQL: activos, servicios, alertas y caché NVD.
+- Analizador Python: detección, persistencia y alertas.
+- Sensor C++: captura de paquetes y publicación JSON.
+- `cve-sync`: consulta exclusiva de la API NVD 2.0.
 
 Telegram no forma parte de esta integración.
 
@@ -74,3 +75,39 @@ El analizador guarda en PostgreSQL:
 
 PostgreSQL debe ser saludable antes de iniciar el analizador. Si la base está
 temporalmente fuera, el analizador registrará el error y seguirá escuchando Redis.
+
+## Estado actual
+
+- Redis, PostgreSQL, sensor y analizador están dockerizados.
+- Las pruebas C++ se ejecutan durante la construcción del sensor.
+- Las tablas `iam`, `assets`, `alerts` y `nvd` existen en PostgreSQL.
+- El analizador persiste activos, servicios y alertas.
+- El sincronizador NVD consume CPE registrados.
+- Discord permanece disponible en el analizador.
+- Telegram no forma parte del proyecto.
+
+## Pendiente para el compañero backend
+
+El propietario de `omniguard-core-java` debe implementar:
+
+- API REST para activos, servicios, alertas y CVEs.
+- Arquitectura hexagonal estricta.
+- PASETO y cookies `HttpOnly`.
+- Usuarios, roles y permisos IAM.
+- Contrato HTTP para recibir alertas validadas.
+- Repositorios JPA para PostgreSQL.
+
+Redis y PostgreSQL no deben exponerse al navegador.
+
+## Pendiente para el compañero frontend
+
+El propietario de `omniguard-frontend-react` debe implementar:
+
+- Dashboard Blue Team.
+- Vistas de activos y servicios.
+- Alertas MEDIUM/HIGH y filtros.
+- Severidad, descripción y CVSS de CVEs.
+- Gestión visual de usuarios si el backend la habilita.
+- Actualización periódica o tiempo real mediante la API Java.
+
+El frontend no captura tráfico ni accede directamente a Redis/PostgreSQL.
