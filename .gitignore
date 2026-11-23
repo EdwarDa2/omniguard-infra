@@ -1,0 +1,64 @@
+# ============================================================
+# OmniGuard SOC Infra - .gitignore
+# ============================================================
+
+# --- Environment & Secrets ---
+.env
+.env.*
+*.env
+.env.local
+.env.*.local
+secrets/
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+*.keystore
+*.truststore
+
+# --- IDE ---
+.idea/
+*.iml
+*.iws
+*.ipr
+.vscode/
+*.swp
+*.swo
+*~
+
+# --- OS ---
+.DS_Store
+Thumbs.db
+ehthumbs.db
+
+# --- Docker ---
+docker-compose.override.yml
+docker-compose.*.yml
+!docker-compose.yml
+!docker-compose.*.example.yml
+
+# --- Certs ---
+certs/
+*.pem
+*.key
+
+# --- Logs ---
+*.log
+*.log.*
+*.out
+*.err
+
+# --- Temp ---
+tmp/
+temp/
+*.tmp
+*.temp
+
+# --- Misc ---
+*.bak
+*.backup
+*.orig
+*.rej
+*.patch
+*.diff
