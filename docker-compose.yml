@@ -150,6 +150,182 @@ services:
         max_attempts: 3
 
   # ============================================================
+  # EXPORTERS PARA PROMETHEUS
+  # ============================================================
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:v0.15.0
+    container_name: omniguard-postgres-exporter
+    environment:
+      DATA_SOURCE_NAME: "postgresql://${DB_USER:-omniguard}:${POSTGRES_PASSWORD}@postgres:5432/omniguard?sslmode=disable"
+      PG_EXPORTER_WEB_LISTEN_ADDRESS: ":9187"
+      PG_EXPORTER_EXTEND_QUERY_PATH: /etc/postgres-exporter/queries.yaml
+    volumes:
+      - ./monitoring/postgres-exporter/queries.yaml:/etc/postgres-exporter/queries.yaml:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - internal
+      - monitoring
+    ports:
+      - "9187:9187"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9187/metrics"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    deploy:
+      restart_policy:
+        condition: on-failure
+
+  redis-exporter:
+    image: oliver006/redis_exporter:v1.60.0
+    container_name: omniguard-redis-exporter
+    environment:
+      REDIS_ADDR: redis://redis:6379
+      REDIS_EXPORTER_WEB_LISTEN_ADDRESS: ":9121"
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - internal
+      - monitoring
+    ports:
+      - "9121:9121"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9121/metrics"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    deploy:
+      restart_policy:
+        condition: on-failure
+
+  nginx-exporter:
+    image: nginx/nginx-prometheus-exporter:1.2.0
+    container_name: omniguard-nginx-exporter
+    environment:
+      NGINX_EXPORTER_SCRAPE_URI: http://nginx:8080/stub_status
+      NGINX_EXPORTER_WEB_LISTEN_ADDRESS: ":9113"
+    depends_on:
+      - nginx
+    networks:
+      - web
+      - monitoring
+    ports:
+      - "9113:9113"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9113/metrics"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    deploy:
+      restart_policy:
+        condition: on-failure
+
+  node-exporter:
+    image: prometheus/node-exporter:v1.7.0
+    container_name: omniguard-node-exporter
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.sysfs=/host/sys'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+    networks:
+      - monitoring
+    ports:
+      - "9100:9100"
+    pid: host
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9100/metrics"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    deploy:
+      restart_policy:
+        condition: on-failure
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.49.0
+    container_name: omniguard-cadvisor
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    networks:
+      - monitoring
+    ports:
+      - "8080:8080"
+    privileged: true
+    devices:
+      - /dev/kmsg:/dev/kmsg
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    deploy:
+      restart_policy:
+        condition: on-failure
+
+  blackbox-exporter:
+    image: prometheus/blackbox-exporter:v0.24.0
+    container_name: omniguard-blackbox-exporter
+    volumes:
+      - ./monitoring/blackbox.yml:/etc/blackbox_exporter/config.yml:ro
+    networks:
+      - monitoring
+      - web
+    ports:
+      - "9115:9115"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9115/metrics"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    deploy:
+      restart_policy:
+        condition: on-failure
+
+  # ============================================================
+  # TEMPO - Distributed Tracing
+  # ============================================================
+  tempo:
+    image: grafana/tempo:2.4
+    container_name: omniguard-tempo
+    command: -config.file=/etc/tempo.yaml
+    volumes:
+      - ./monitoring/tempo/tempo.yaml:/etc/tempo.yaml:ro
+      - tempodata:/var/tempo
+    ports:
+      - "3200:3200"   # Tempo HTTP
+      - "4317:4317"   # OTLP gRPC
+      - "4318:4318"   # OTLP HTTP
+      - "9411:9411"   # Zipkin
+    networks:
+      - monitoring
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3200/ready"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    deploy:
+      restart_policy:
+        condition: on-failure
+
+  # ============================================================
   # OBSERVABILIDAD - Prometheus
   # ============================================================
   prometheus:
@@ -157,6 +333,7 @@ services:
     container_name: omniguard-prometheus
     volumes:
       - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/rules:/etc/prometheus/rules:ro
       - promdata:/prometheus
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
@@ -229,7 +406,7 @@ services:
         condition: on-failure
 
   # ============================================================
-  # LOGS - Loki + Promtail (opcional pero recomendado)
+  # LOGS - Loki + Promtail
   # ============================================================
   loki:
     image: grafana/loki:2.9
@@ -260,6 +437,38 @@ services:
     deploy:
       restart_policy:
         condition: on-failure
+
+  # ============================================================
+  # REVERSE PROXY - Nginx (TLS termination, rate limit, security headers)
+  # ============================================================
+  nginx:
+    image: nginx:alpine
+    container_name: omniguard-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./certs:/etc/nginx/certs:ro
+    depends_on:
+      - core-api
+    networks:
+      - web
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "0.25"
+      restart_policy:
+        condition: on-failure
+        max_attempts: 3
 
 # ============================================================
 # REDES
@@ -292,6 +501,8 @@ volumes:
     name: omniguard-alertdata
   lokidata:
     name: omniguard-lokidata
+  tempodata:
+    name: omniguard-tempodata
 
 # ============================================================
 # SECRETS (archivos en ./secrets/ o Docker Secrets en Swarm/K8s)
