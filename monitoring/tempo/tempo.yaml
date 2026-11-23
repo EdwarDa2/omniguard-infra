@@ -1,0 +1,48 @@
+# ============================================================
+# OmniGuard SOC - Tempo Configuration
+# Distributed tracing backend
+# ============================================================
+
+server:
+  http_listen_port: 3200
+  grpc_listen_port: 9095
+
+distributor:
+  receivers:
+    otlp:
+      protocols:
+        http:
+          endpoint: 0.0.0.0:4318
+        grpc:
+          endpoint: 0.0.0.0:4317
+
+ingester:
+  trace_idle_period: 30s
+  max_block_bytes: 1_000_000
+  max_block_duration: 5m
+
+compactor:
+  compaction:
+    block_retention: 14d
+    compacted_block_retention: 1h
+
+storage:
+  trace:
+    backend: local
+    local:
+      path: /var/tempo
+    pool:
+      max_workers: 100
+      queue_depth: 10000
+
+limits:
+  max_bytes_per_trace: 5000000
+  ingestion_rate_limit_bytes: 1000000
+  ingestion_burst_size_bytes: 5000000
+  per_stream_rate_limit_bytes: 1000000
+  per_stream_rate_limit_burst_bytes: 5000000
+
+memberlist:
+  join_members: ["tempo"]
+  bind_addr: 0.0.0.0
+  bind_port: 7946

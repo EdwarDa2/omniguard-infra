@@ -1,0 +1,311 @@
+# ============================================================
+# OmniGuard SOC - Postgres Exporter Custom Queries
+# ============================================================
+
+pg_database:
+  query: |
+    SELECT
+      datname,
+      pg_database_size(datname) as size_bytes,
+      pg_stat_get_db_numbackends(d.oid) as numbackends,
+      xact_commit,
+      xact_rollback,
+      blks_read,
+      blks_hit,
+      tup_returned,
+      tup_fetched,
+      tup_inserted,
+      tup_updated,
+      tup_deleted,
+      conflicts,
+      temp_files,
+      temp_bytes,
+      deadlocks,
+      checksum_failures,
+      checksum_last_failure
+    FROM pg_database d
+    JOIN pg_stat_database s ON d.oid = s.datid
+    WHERE datallowconn AND NOT datistemplate
+  master: true
+  metrics:
+    - datname:
+        usage: "LABEL"
+        description: "Name of the database"
+    - size_bytes:
+        usage: "GAUGE"
+        description: "Database size in bytes"
+    - numbackends:
+        usage: "GAUGE"
+        description: "Number of backends connected"
+    - xact_commit:
+        usage: "COUNTER"
+        description: "Number of transactions committed"
+    - xact_rollback:
+        usage: "COUNTER"
+        description: "Number of transactions rolled back"
+    - blks_read:
+        usage: "COUNTER"
+        description: "Number of disk blocks read"
+    - blks_hit:
+        usage: "COUNTER"
+        description: "Number of buffer hits"
+    - tup_returned:
+        usage: "COUNTER"
+        description: "Number of rows returned"
+    - tup_fetched:
+        usage: "COUNTER"
+        description: "Number of rows fetched"
+    - tup_inserted:
+        usage: "COUNTER"
+        description: "Number of rows inserted"
+    - tup_updated:
+        usage: "COUNTER"
+        description: "Number of rows updated"
+    - tup_deleted:
+        usage: "COUNTER"
+        description: "Number of rows deleted"
+    - conflicts:
+        usage: "COUNTER"
+        description: "Number of queries canceled due to conflicts"
+    - temp_files:
+        usage: "COUNTER"
+        description: "Number of temporary files created"
+    - temp_bytes:
+        usage: "COUNTER"
+        description: "Amount of data written to temporary files"
+    - deadlocks:
+        usage: "COUNTER"
+        description: "Number of deadlocks detected"
+    - checksum_failures:
+        usage: "COUNTER"
+        description: "Number of page checksum failures"
+    - checksum_last_failure:
+        usage: "GAUGE"
+        description: "Timestamp of last checksum failure"
+
+pg_stat_bgwriter:
+  query: |
+    SELECT
+      checkpoints_timed,
+      checkpoints_req,
+      checkpoint_write_time,
+      checkpoint_sync_time,
+      buffers_checkpoint,
+      buffers_clean,
+      maxwritten_clean,
+      buffers_backend,
+      buffers_backend_fsync,
+      buffers_alloc
+    FROM pg_stat_bgwriter
+  master: true
+  metrics:
+    - checkpoints_timed:
+        usage: "COUNTER"
+        description: "Number of scheduled checkpoints"
+    - checkpoints_req:
+        usage: "COUNTER"
+        description: "Number of requested checkpoints"
+    - checkpoint_write_time:
+        usage: "COUNTER"
+        description: "Time spent writing checkpoint files (ms)"
+    - checkpoint_sync_time:
+        usage: "COUNTER"
+        description: "Time spent syncing checkpoint files (ms)"
+    - buffers_checkpoint:
+        usage: "COUNTER"
+        description: "Buffers written during checkpoints"
+    - buffers_clean:
+        usage: "COUNTER"
+        description: "Buffers written by bgwriter"
+    - maxwritten_clean:
+        usage: "COUNTER"
+        description: "Number of times bgwriter stopped cleaning"
+    - buffers_backend:
+        usage: "COUNTER"
+        description: "Buffers written directly by backends"
+    - buffers_backend_fsync:
+        usage: "COUNTER"
+        description: "Times backends had to fsync"
+    - buffers_alloc:
+        usage: "COUNTER"
+        description: "Buffers allocated"
+
+pg_stat_statements:
+  query: |
+    SELECT
+      userid,
+      dbid,
+      queryid,
+      calls,
+      total_time,
+      min_time,
+      max_time,
+      mean_time,
+      stddev_time,
+      rows,
+      shared_blks_hit,
+      shared_blks_read,
+      shared_blks_dirtied,
+      shared_blks_written,
+      local_blks_hit,
+      local_blks_read,
+      local_blks_dirtied,
+      local_blks_written,
+      temp_blks_read,
+      temp_blks_written,
+      blk_read_time,
+      blk_write_time
+    FROM pg_stat_statements
+    WHERE calls > 10
+  master: false
+  metrics:
+    - userid:
+        usage: "LABEL"
+        description: "OID of user who executed the statement"
+    - dbid:
+        usage: "LABEL"
+        description: "OID of database"
+    - queryid:
+        usage: "LABEL"
+        description: "Query identifier"
+    - calls:
+        usage: "COUNTER"
+        description: "Number of times executed"
+    - total_time:
+        usage: "COUNTER"
+        description: "Total time spent in statement (ms)"
+    - min_time:
+        usage: "GAUGE"
+        description: "Minimum execution time (ms)"
+    - max_time:
+        usage: "GAUGE"
+        description: "Maximum execution time (ms)"
+    - mean_time:
+        usage: "GAUGE"
+        description: "Mean execution time (ms)"
+    - stddev_time:
+        usage: "GAUGE"
+        description: "Standard deviation of execution time (ms)"
+    - rows:
+        usage: "COUNTER"
+        description: "Total rows returned/affected"
+    - shared_blks_hit:
+        usage: "COUNTER"
+        description: "Shared blocks hit"
+    - shared_blks_read:
+        usage: "COUNTER"
+        description: "Shared blocks read"
+    - shared_blks_dirtied:
+        usage: "COUNTER"
+        description: "Shared blocks dirtied"
+    - shared_blks_written:
+        usage: "COUNTER"
+        description: "Shared blocks written"
+    - local_blks_hit:
+        usage: "COUNTER"
+        description: "Local blocks hit"
+    - local_blks_read:
+        usage: "COUNTER"
+        description: "Local blocks read"
+    - local_blks_dirtied:
+        usage: "COUNTER"
+        description: "Local blocks dirtied"
+    - local_blks_written:
+        usage: "COUNTER"
+        description: "Local blocks written"
+    - temp_blks_read:
+        usage: "COUNTER"
+        description: "Temp blocks read"
+    - temp_blks_written:
+        usage: "COUNTER"
+        description: "Temp blocks written"
+    - blk_read_time:
+        usage: "COUNTER"
+        description: "Time reading blocks (ms)"
+    - blk_write_time:
+        usage: "COUNTER"
+        description: "Time writing blocks (ms)"
+
+pg_replication:
+  query: |
+    SELECT
+      client_addr,
+      state,
+      sent_lsn,
+      write_lsn,
+      flush_lsn,
+      replay_lsn,
+      write_lag,
+      flush_lag,
+      replay_lag
+    FROM pg_stat_replication
+  master: true
+  metrics:
+    - client_addr:
+        usage: "LABEL"
+        description: "Replica IP address"
+    - state:
+        usage: "LABEL"
+        description: "Replication state"
+    - sent_lsn:
+        usage: "GAUGE"
+        description: "Sent LSN"
+    - write_lsn:
+        usage: "GAUGE"
+        description: "Write LSN"
+    - flush_lsn:
+        usage: "GAUGE"
+        description: "Flush LSN"
+    - replay_lsn:
+        usage: "GAUGE"
+        description: "Replay LSN"
+    - write_lag:
+        usage: "GAUGE"
+        description: "Write lag (bytes)"
+    - flush_lag:
+        usage: "GAUGE"
+        description: "Flush lag (bytes)"
+    - replay_lag:
+        usage: "GAUGE"
+        description: "Replay lag (bytes)"
+
+pg_stat_activity:
+  query: |
+    SELECT
+      pid,
+      usename,
+      datname,
+      state,
+      query_start,
+      state_change,
+      wait_event_type,
+      wait_event,
+      query
+    FROM pg_stat_activity
+    WHERE state != 'idle'
+  master: false
+  metrics:
+    - pid:
+        usage: "LABEL"
+        description: "Process ID"
+    - usename:
+        usage: "LABEL"
+        description: "User name"
+    - datname:
+        usage: "LABEL"
+        description: "Database name"
+    - state:
+        usage: "LABEL"
+        description: "Connection state"
+    - query_start:
+        usage: "GAUGE"
+        description: "Query start time"
+    - state_change:
+        usage: "GAUGE"
+        description: "State change time"
+    - wait_event_type:
+        usage: "LABEL"
+        description: "Wait event type"
+    - wait_event:
+        usage: "LABEL"
+        description: "Wait event"
