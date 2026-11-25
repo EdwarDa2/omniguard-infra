@@ -7,7 +7,8 @@ Infraestructura local de OmniGuard SOC con Docker Compose.
 - Redis: bus `network_events`.
 - PostgreSQL: activos, servicios, alertas y caché NVD.
 - Analizador Python: detección, persistencia y alertas.
-- Sensor C++: captura de paquetes y publicación JSON.
+- Worker Python opcional: escaneo TCP limitado a IPs autorizadas.
+- Sensor C++: captura del tráfico propio del host, eventos y métricas reales con TTL en Redis.
 - `cve-sync`: consulta exclusiva de la API NVD 2.0.
 
 Telegram no forma parte de esta integración.
@@ -17,6 +18,20 @@ Telegram no forma parte de esta integración.
 ```bash
 docker compose up --build
 ```
+
+El worker de escaneo se inicia por separado y solo después de configurar el
+endpoint interno, el token y las IP propias autorizadas:
+
+```bash
+docker compose --profile active-scan up -d --build scan-worker
+```
+
+Configura `SCAN_ALLOWED_TARGETS` como una lista de IP literales exactas. Si no
+se configura, el perfil falla al iniciar. En Docker, `127.0.0.1` identifica al
+contenedor del worker, no al host; configura únicamente la(s) IPv4 propia(s)
+del equipo autorizado. El worker rechaza otros destinos y rangos que excedan
+`SCAN_MAX_PORTS`. La orden llega por Redis Pub/Sub, por lo que no queda en cola
+si el worker no está conectado.
 
 Verificar Redis:
 
@@ -79,6 +94,8 @@ temporalmente fuera, el analizador registrará el error y seguirá escuchando Re
 ## Estado actual
 
 - Redis, PostgreSQL, sensor y analizador están dockerizados.
+- El worker de escaneo activo es opcional, con allowlist exacta y perfil Compose separado.
+- El sensor captura en modo no promiscuo y añade un filtro BPF para las IP propias de la interfaz.
 - Las pruebas C++ se ejecutan durante la construcción del sensor.
 - Las tablas `iam`, `assets`, `alerts` y `nvd` existen en PostgreSQL.
 - El analizador persiste activos, servicios y alertas.

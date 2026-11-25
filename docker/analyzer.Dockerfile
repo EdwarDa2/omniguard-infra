@@ -10,6 +10,7 @@ COPY omniguard-analyzer-python/analyzer.py \
      omniguard-analyzer-python/detector.py \
      omniguard-analyzer-python/notifier.py \
      omniguard-analyzer-python/persistence.py \
+     omniguard-analyzer-python/scan_worker.py \
      ./
 
 ENTRYPOINT ["python", "analyzer.py"]

@@ -60,6 +60,32 @@ services:
     networks:
       - omniguard
 
+  scan-worker:
+    build:
+      context: ..
+      dockerfile: omniguard-infra/docker/analyzer.Dockerfile
+    container_name: omniguard-scan-worker
+    profiles: ["active-scan"]
+    restart: unless-stopped
+    entrypoint: ["python", "scan_worker.py"]
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: ${REDIS_PORT:-6379}
+      SCAN_COMMANDS_CHANNEL: ${SCAN_COMMANDS_CHANNEL:-scan_commands_channel}
+      CORE_API_URL: ${SCAN_CORE_API_URL:-}
+      INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:-}
+      SCAN_ALLOWED_TARGETS: ${SCAN_ALLOWED_TARGETS:-}
+      SCAN_TIMEOUT_SECONDS: ${SCAN_TIMEOUT_SECONDS:-0.5}
+      SCAN_CONCURRENCY: ${SCAN_CONCURRENCY:-32}
+      SCAN_MAX_PORTS: ${SCAN_MAX_PORTS:-1024}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - omniguard
+
   cve-sync:
     build:
       context: .
