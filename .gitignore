@@ -1,3 +1,10 @@
 .env
 *.log
 __pycache__/
+
+# Secretos y credenciales locales (Checklist 4.1)
+.env.*
+*.key
+*.pem
+*.crt
+!.env.example
